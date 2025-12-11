@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PROJECT: E-89 (Crimson Protocol V10.3.1 Hotfix)</title>
+    <!-- 修复了商店显示异常与数值计算错误 -->
+    <style>
+        /* [核心配色 - 沿用之前的高对比度红棕调] */
+        :root {
+            --bg: #110505;
+            --main: #eee0d0;
+            --dim: #411;
+            --warn: #ff3333;
+            --gold: #eeaa55;
+            --ui-border: #622;
+            --panel-bg: rgba(25,12,12,0.95);
+            --pop-bg: rgba(0,0,0,0.85);
+
+            --glow-text: 0 0 2px rgba(238, 224, 208, 0.3);
+            --shadow-card: 0 4px 10px rgba(0,0,0,0.6);
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--main);
+            font-family: "Microsoft YaHei", "Georgia", serif;
+            margin: 0; min-height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+            overflow: hidden;
+            text-shadow: var(--glow-text);
+            user-select: none;
+        }
+
+        .scanline {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(0,0,0,0) 50%, rgba(200,0,0,0.05) 50%);
+            background-size: 100% 3px;
+            pointer-events: none; z-index: 99;
+        }
+
+        .scene { width: 100%; height: 100%; display: none; flex-direction: column; }
+        .visible { display: flex; animation: fadeIn 0.6s ease-out; }
+        @keyframes fadeIn { from{opacity:0; transform:scale(0.98);} to{opacity:1; transform:scale(1);} }
+
+        /* INTRO */
+        #p-intro { position: absolute; top:0; left:0; right:0; bottom:0; display: flex; justify-content: center; align-items: center; z-index: 100; transform:translate3d(0,0,0); background: #000; }
+        .intro-box { max-width: 650px; width: 90%; border: 2px solid var(--ui-border); padding: 40px; background: #140808; box-shadow: 0 0 40px #200; margin: auto; }
+        .intro-text { line-height: 1.8; font-size: 1.1em; color: #ccc; margin-bottom: 30px; text-align: justify; }
+
+        /* GAME UI */
+        #p-game {
+            width: 98%; max-width: 1400px; height: 98vh;
+            border: 1px solid var(--ui-border);
+            display: none;
+            padding: 10px; box-sizing: border-box; background: #0c0505;
+            grid-template-columns: 280px 1fr 340px;
+            grid-template-rows: 50px 1fr;
+            gap: 15px;
+        }
+
+        .head { grid-column: 1 / -1; border-bottom: 2px solid var(--ui-border); display: flex; justify-content: space-between; align-items: center; padding: 0 15px; font-size: 1.2em; font-weight: bold; color: #fff; background: #211; }
+        .col-stats { grid-row: 2/3; border: 1px solid var(--ui-border); padding: 20px; background: var(--panel-bg); display: flex; flex-direction: column; overflow-y: auto; }
+        .stat-l { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 1em; color: #ddd; }
+        .bar-bg { width: 100%; height: 8px; background: #322; margin-bottom: 20px; border: 1px solid #533; }
+        .bar-fg { height: 100%; transition: width 0.4s; }
+
+        #bar-tr { background: var(--warn); box-shadow: 0 0 5px var(--warn); }
+        #bar-sa { background: #68b; }
+        #bar-bd { background: var(--gold); }
+        #bar-xp { background: #d4a; }
+        #bar-ap { background: #5a8; }
+
+        .col-log {
+            grid-row: 2/3; border: 1px solid var(--ui-border); padding: 20px; background: #080202;
+            overflow-y: auto;
+            font-family: "Georgia", serif;
+            font-size: 1.05em; line-height: 1.7;
+            background-image: linear-gradient(#150505 1px, transparent 1px), linear-gradient(90deg, #150505 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .para { margin-bottom: 12px; }
+        .t-sys { color: #889; font-style: italic; font-size: 0.9em; }
+        .t-act { color: var(--gold); font-weight: bold; border-left: 3px solid var(--gold); padding-left: 8px; }
+        .t-boy { color: #fff; text-shadow: 0 0 1px #fff; }
+        .t-warn { color: #f55; font-weight: bold; border-left: 3px solid #f55; padding-left: 8px; }
+        .t-event { color: #8ef; font-weight: bold; border-left: 3px solid #8ef; padding-left: 8px; background: rgba(0,50,50,0.2);}
+        .t-quote { color: #8a8; border-left: 2px solid #353; padding-left: 10px; margin: 15px 0; font-style: italic; font-family:"仿宋", serif; font-size: 0.95em;}
+        /* Dawn/Dusk text style */
+        .t-atmo { color: #99a; border-left: 4px solid #445; background:rgba(20,20,30,0.4); padding: 8px 12px; margin: 10px 0; font-family:"Georgia", serif; letter-spacing:0.5px; font-size: 0.9em; opacity: 0.9; }
+
+        .col-act { grid-row: 2/3; border: 1px solid var(--ui-border); display: flex; flex-direction: column; background: var(--panel-bg); overflow: hidden; }
+        .cat-label { padding: 8px 10px; background: #2a1010; color: #e99; font-size: 0.85em; font-weight: bold; letter-spacing: 1px; border-bottom: 1px solid #411; border-top: 1px solid #411; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px; flex-shrink: 0; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 8px; flex-shrink: 0; }
+        .btn-act { background: #251010; border: 1px solid #522; color: #ddd; cursor: pointer; padding: 12px 2px; text-align: center; font-size: 0.9em; transition: 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .btn-act:hover { background: #452020; color: #fff; box-shadow: 0 0 8px #933; }
+        .btn-act:disabled { opacity: 0.3; cursor: not-allowed; filter: grayscale(1); }
+        .special-btn { color: #eaf; border-color: #636; }
+        .tabs { display: flex; border-bottom: 2px solid var(--ui-border); margin-top: 5px; background: #200d0d; flex-shrink: 0;}
+        .tab { flex: 1; border: none; background: transparent; color: #977; padding: 10px; cursor: pointer; font-weight: bold; }
+        .tab.active { color: var(--gold); background: #351515; border-bottom: 3px solid var(--gold); }
+        .list-box { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 0; scrollbar-width: thin; scrollbar-color: #522 #100; }
+        .card { background: #1e0e0e; border: 1px solid #462525; padding: 10px; cursor: pointer; position: relative; box-shadow: var(--shadow-card); }
+        .card:hover { background: #2e1515; border-color: #855; transform: translateX(2px); transition: 0.1s;}
+        .card.locked { opacity: 0.5; filter: grayscale(0.8); pointer-events: none; border-style: dashed; }
+        .card.reusable { background: #160a0a; border-left: 3px solid #538; }
+        .card-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .card-n { font-weight: bold; color: #eee; font-size: 1.05em; }
+        .card-c { color: var(--gold); font-size: 0.9em; font-family: monospace; }
+        .card-tip { font-size: 0.8em; color: #866; display:block;}
+        .btn-end { flex-shrink: 0; padding: 16px; margin: 10px; background: #3a1515; border: 2px solid #633; color: #eee; font-size: 1.1em; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        .btn-end:hover { background: #522; color: #fff; box-shadow: 0 0 15px #600; }
+
+        #p-end { justify-content: center; align-items: center; text-align: center; padding: 50px; background: #000; overflow-y: auto;}
+        .end-h1 { font-size: 2.5em; color: var(--gold); margin-bottom: 30px; border-bottom: 1px solid #522; padding-bottom: 20px; font-family: serif; letter-spacing: 3px;}
+        .end-p { max-width: 800px; color: #ccc; font-size: 1.15em; line-height: 2.3; margin-bottom: 50px; text-shadow: 0 0 1px #888; text-align: justify; font-family: "Georgia", serif;}
+
+        .ipt-group { margin-bottom: 20px; }
+        label { color: var(--gold); font-size: 0.9em; display: block; margin-bottom: 5px; }
+        input { background: #2a1515; border: 1px solid #744; color: #fff; padding: 10px; font-family: inherit; font-size: 1.1em; width: 100%; box-sizing: border-box; text-align: center; outline: none; }
+        input:focus { border-color: var(--gold); }
+
+        .modal { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.85); z-index: 200; display: none; justify-content: center; align-items: center; }
+        .modal.show { display: flex; animation: fadeIn 0.3s; }
+        .modal-box { background: #180808; border: 3px solid #622; padding: 30px; width: 620px; border-radius: 4px; box-shadow: 0 0 40px #511; display:flex; flex-direction:column; max-height: 80vh; overflow-y:auto; }
+        .modal-h { color: var(--gold); font-size: 1.4em; border-bottom: 1px solid #411; margin-bottom: 15px; padding-bottom: 10px; font-weight: bold; text-align: center;}
+        .modal-p { color: #ddd; margin-bottom: 20px; line-height: 1.6; text-align: justify;min-height:80px; font-size: 1.1em;}
+        .opt-grid { display: flex; flex-direction: column; gap: 10px; }
+        .btn-opt { padding: 12px 15px; background: #251010; color: #ccc; border: 1px solid #522; cursor: pointer; font-size: 1em; text-align: left; transition:0.2s; white-space: normal; line-height: 1.4;}
+        .btn-opt:hover { background: #401818; border-color:var(--gold); color:#fff; transform: translateX(5px); }
+        .btn-opt b { color: var(--gold); margin-right:5px;}
+    </style>
+</head>
+<body>
+
+<div class="scanline"></div>
+
+<!-- Event Modal -->
+<div id="m-popup" class="modal">
+    <div class="modal-box">
+        <div class="modal-h" id="m-title">RANDOM EVENT</div>
+        <div class="modal-p" id="m-text">...</div>
+        <div class="opt-grid" id="m-opts"></div>
+    </div>
+</div>
+
+<!-- 0. Intro Scene -->
+<div id="p-intro" class="scene visible">
+    <div class="intro-box">
+        <h2 style="color:var(--warn); text-align:center; letter-spacing:5px;">[绯红档案：重置协议]</h2>
+        <div class="intro-text">
+            <p>1984年，暴雪永不停歇的第115个冬天。</p>
+            <p>这里是第11号特别育儿所，位于地下500米的冻土层。<br>您的目标是编号<strong>E-89 ('Alpha')</strong>。</p>
+            <p>一个9岁的男孩，拥有那个已故独裁者最完美的基因序列。他是国家未来的至高兵器，也是一张等待被染色的白纸。</p>
+            <p>上级赋予您绝对的权力。您不是保姆，而是雕塑家。您需要通过制造<strong>精神创伤</strong>（Trauma）和<strong>情感依赖</strong>（Bond）来重塑他的人格。真理部甚至默许了更隐秘的侵犯与管教——如果那样能将他彻底驯化的话。</p>
+            <div style="border:1px solid #633; padding:10px; background:#211; font-size:0.9em; margin-bottom:10px;">
+                <strong>NOTICE: V10.3 COLD WINTER</strong><br>
+                1. 随机事件从<strong>第6天</strong>起触发。<br>
+                2. <strong>亲密过低(<25)时，部分抚摸无效。</strong><br>
+                3. 新增每日清晨/深夜的氛围记录，请时刻铭记你在哪里。<br>
+            </div>
+        </div>
+
+        <div class="ipt-group">
+            <label>监管认证ID：</label>
+            <input id="u_name" value="监管者">
+        </div>
+        <div class="ipt-group">
+           <label>实验体代称：</label>
+           <input id="b_name" value="亚当">
+        </div>
+
+        <button class="btn-end" type="button" onclick="Game.start()" style="width:100%">开始监控</button>
+    </div>
+</div>
+
+<!-- 1. Game Scene -->
+<div id="p-game" class="scene">
+    <div class="head">
+        <div>WEEK <span id="v-w">1</span> | DAY <span id="v-d">1</span></div>
+        <div style="font-size:0.9em; display:flex; gap:15px; align-items:center;">
+             <span>经费: <span style="color:var(--gold)" id="v-mn">100</span> C</span>
+             <span id="v-inv-box" style="display:none; color:#e7e;">[线索:<span id="v-inv">0</span>/3]</span>
+        </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="col-stats">
+        <div style="color:var(--gold); font-size:1.2em; font-weight:bold; margin-bottom:15px; text-align:center;">TARGET: <span id="lab-n">E-89</span></div>
+
+        <div class="stat-l"><span style="color:var(--warn)">创伤深度 (Trauma)</span> <span id="s-tr-t">0/10</span></div>
+        <div class="bar-bg"><div id="bar-tr" class="bar-fg" style="width:0%"></div></div>
+
+        <div class="stat-l"><span>理智存量 (Sanity)</span> <span id="s-sa-t">100</span></div>
+        <div class="bar-bg"><div id="bar-sa" class="bar-fg" style="width:100%"></div></div>
+
+        <div class="stat-l" style="margin-top:15px;"><span style="color:var(--gold)">依赖与信任 (Bond)</span> <span id="s-bd-t">0%</span></div>
+        <div class="bar-bg"><div id="bar-bd" class="bar-fg" style="width:0%"></div></div>
+
+        <div class="stat-l" style="margin-top:10px;"><span style="color:#eaf">异质情欲 (Eros)</span> <span id="s-xp-t">0</span></div>
+        <div class="bar-bg"><div id="bar-xp" class="bar-fg" style="width:0%"></div></div>
+
+        <div class="stat-l" style="margin-top:auto">行动力 (AP) <span id="s-ap-t">3/3</span></div>
+        <div class="bar-bg"><div id="bar-ap" class="bar-fg" style="width:100%"></div></div>
+    </div>
+
+    <!-- MAIN LOG -->
+    <div class="col-log" id="logger">
+        <!-- Text stream -->
+    </div>
+
+    <!-- BOARD -->
+    <div class="col-act">
+        <div class="cat-label">TOUCH PROTOCOL</div>
+        <div class="grid-4">
+            <button id="btn-hair" class="btn-act" onclick="Game.act('touch','hair')">头发</button>
+            <button id="btn-face" class="btn-act" onclick="Game.act('touch','face')">脸颊</button>
+            <button id="btn-hand" class="btn-act" onclick="Game.act('touch','hand')">手</button>
+            <button id="btn-chest" class="btn-act" onclick="Game.act('touch','chest')" style="color:#faa">胸口</button>
+            <button id="btn-leg" class="btn-act" onclick="Game.act('touch','leg')">腿</button>
+            <button id="btn-hip" class="btn-act" onclick="Game.act('touch','hip')" style="color:#d8d">臀部</button>
+            <button id="btn-priv" class="btn-act special-btn" style="grid-column: span 2" onclick="Game.act('touch','priv')">⚠️触碰下体</button>
+        </div>
+
+        <div class="cat-label">BASIC ACTION</div>
+        <div class="grid-3">
+            <button id="btn-chat" class="btn-act" onclick="Game.act('basic','chat')">💬 谈心询问</button>
+            <button id="btn-wall" class="btn-act" onclick="Game.act('basic','wall')">🧊 罚站</button>
+             <button id="btn-spank" class="btn-act" onclick="Game.act('basic','spank')">👋 扇耳光</button>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="Game.tab('shop',this)">配给</button>
+            <button class="tab" onclick="Game.tab('task',this)">施压</button>
+            <button class="tab" onclick="Game.tab('out',this)">外出</button>
+        </div>
+        <div class="list-box" id="list-c"></div>
+
+        <button class="btn-end" onclick="Game.next()"> &gt;&gt; 熄灯(结束) &lt;&lt; </button>
+    </div>
+</div>
+
+<!-- 2. End Scene -->
+<div id="p-end" class="scene">
+    <h1 class="end-h1" id="end-title">ENDING</h1>
+    <div class="end-p" id="end-txt">...</div>
+    <button class="btn-end" onclick="location.reload()" style="width:300px">RESTART PROTOCOL</button>
+</div>
+
+<script>
+/*
+   ================ CORE SCRIPT v10.3.1 ================
+*/
+
+const _U = {
+    r: (arr) => arr[Math.floor(Math.random() * arr.length)],
+    p: (txt, name) => txt.replace(/{B}/g, name),
+    // 数值修正，防止js浮点数错误和NaN
+    toInt: (v) => parseInt(v) || 0
+};
+
+// [ATMOSPHERE TEXT]
+const ATMO = {
+    dawn: [
+        "风在通风管道里呜咽，像死去的亡魂在乞求归乡。",
+        "清晨的灯光亮起，苍白得如同医院的停尸房。",
+        "又是新的一天。在这地下五百米，日出只是仪表盘上的数字跳动。",
+        "你闻到了那种熟悉的、终年不散的铁锈味，这是这座地下城的体香。",
+        "暴雪在地面上咆哮，即便在这里也能感觉到那股彻骨的震颤。",
+        "一杯冷咖啡。这个世界上已经很少有热的东西了。",
+        "走廊上传来皮靴的脚步声，规律，冰冷，不似活人。",
+        "收音机里传来只有雪花点的沙沙声，就像是世界的临终遗言。",
+        "墙壁因低温而挂了一层白霜，在这钢铁的腹腔里，你我皆是囚徒。",
+        "他还没有完全从梦中清醒。在这绝望的白色冬天里，或许只有梦境是温暖的。",
+        "空气过滤器发出沉重的老朽喘息，苟延残喘，恰似人类。",
+        "今日的配给依然是灰色的粘稠流食，活着仅仅是为了活着。",
+        "你擦了擦监视器的镜片。一切清晰得残酷，没有一丝诗意。",
+        "不要去想春天。在这个维度，春天只是一个被查禁的禁词。",
+        "醒来。在这没有尽头的冬天里，醒来本身也是一种受难。"
+    ],
+    dusk: [
+        "灯光熄灭了。黑暗像潮水一样无声地漫过每一个角落。",
+        "夜晚，你听到隔壁房间传来的闷哼或哭声，也许只是幻听。",
+        "所有的声音都被黑夜吞噬，只剩下你自己的心跳，大得吵人。",
+        "夜幕降临，他蜷缩在床上那一小块阴影里，像是一个等待被寄出的包裹。",
+        "房间里完全看不到光亮了。外面还在下雪吗？这个问题毫无意义。雪从未停过。",
+        "这一天结束了。你的作为，会被记录在哪一本无人翻阅的档案里？",
+        "疲惫感像铁块一样压在眼球上。在这地底深处，灵魂比肉体更早腐烂。",
+        "夜深了。只有独裁者的雕像在外面的广场上享受着永恒的孤寂。",
+        "月亮出来了，在这个时刻，所有的罪恶都仿佛得到了片刻的安宁与赦免。",
+        "如果你此刻死去，甚至不会有一只苍蝇为你送行。",
+        "在这该死的寂静里，你是不是也开始想念那些并不存在的阳光了？",
+        "又少了一天。离死亡更近，还是离那个莫须有的终点更近？",
+        "夜深了。他在梦里翻了个身。也许梦到了不曾见过的花田。",
+        "关上监视器。但你关不上那双在黑暗中依然凝视着你的眼睛。",
+        "晚安，或者说，祝你在噩梦中也能有一丝不属于这里的甜。"
+    ]
+};
+
+const OPS = {
+    pure: (t, followUp, addS=3, addB=3) => ({t:t, result:followUp, eff:{sa:addS, bd:addB}}),
+    norm: (t, followUp, addB=1) => ({t:t, result:followUp, eff:{bd:addB}}),
+    strict: (t, followUp, addT=3, subB=-2) => ({t:t, result:followUp, eff:{tr:addT, bd:subB}}),
+    eros: (t, followUp, addX=4, addB=2) => ({t:t, result:followUp, eff:{xp:addX, bd:addB, tr:1}})
+};
+
+const TXT = {
+    t_hair: [
+        ["你把手放在他的头顶。他惊讶地缩了一下，但没敢躲。“不疼...”", "金色的发丝很柔软。因为很久没被善待，他对这种温和的触碰感到既陌生又贪念。", "“长官，我的头发很乱...”即使害怕，他却乖乖地顶住了你的手心。", "像抚慰惊魂未定的小动物。他偷偷看了你一眼，眼神里有一丝湿漉漉的讨好。"],
+        ["他不仅没有躲，反而因为舒服而稍微蹭了蹭你的手心。", "“有点痒...但是不讨厌。”他诚实地咕哝着。", "这已经成为了一种让他镇静下来的开关。“谢谢长官。”他低声像是呜咽。", "柔和。在这个残酷的地方，你是唯一会这样对他的人。"],
+        ["主动把脑袋凑过来求摸摸。像极了一只想要讨好主人的猫。", "眯着眼睛享受，喉咙里发出意义不明的撒娇声。“每天都能这样做吗？”", "这给了他莫大的安全感。他那总是紧绷的小脸总算舒展开了。", "“我的头发是金色的，长官会喜欢这个颜色吗？”他抓住你的袖口。"],
+        ["“只要你在...怎么摸都可以。”他眼里满是依恋。", "贪恋这种温度。他闭上眼，把脸贴在你的手腕上，像是在闻你的气味。", "“只有被你碰到的时候，才感觉自己不是在那个冷柜里待着。”", "极度的依赖。如果把手拿开，他会露出被抛弃般的失落并在下一秒跟上来。"]
+    ],
+    t_face: [
+        ["他猛地把头偏向一边，条件反射地闭上眼，仿佛在等待耳光降临。",  "因为过度的恐惧，那张苍白的脸瞬间涨红，试图往后缩。", "他在发抖中把自己缩成小小一团，“别看我...”"],
+        ["指腹划过脸颊。他僵住了，不知道该做出什么表情。", "“因为我今天没有犯错吗？”他迷茫且小心地看着你，眨了眨那双大眼睛。", "{B}小心翼翼地呼吸，观察着你的神色，生怕那是暴风雨前的宁静。"],
+        ["他稍微偏过脸，主动贴合着你的手掌，像是在吸取温度。", "嘴角有了一点点极其细微的上扬。“不讨厌。”", "“你的手比暖气还要好。”","{B}安静地凝视着你，瞳孔里倒映着你的影子。“再多摸一下...”"],
+        ["甚至在此刻，他轻轻亲吻了你的指尖，虔诚得像个信徒。", "脸红得彻底。无论你做什么他都全盘接受，他已经习惯了你的温度。", "不再是检查，更像是某种私密的拥有仪式。他很喜欢。"]
+    ],
+    t_hand: [
+        ["手指刚碰到，他就立刻抽回了手，眼睛瞪得圆圆的。", "即使被强行拉住，那只手也是冰冷且僵直的。", "“我的手...很脏的，不配给长官碰。”"],
+        ["没有抽回，但也只是垂在那儿，不知所措。", "手指有些笨拙地蜷缩了一下，似乎想回握却因为自卑而不敢。", "“握手是...朋友的意思吗？”他有些不确定地歪头。"],
+        ["他主动回握住了你。即使周围一片漆黑。", "十指相扣的一瞬间，他仿佛抓住了悬崖边唯一的绳索。", "“别松开...这儿太冷了，我怕。”"],
+        ["他把脸贴在两人交握的手背上蹭了蹭，眼神痴迷。", "“无论去哪里。”那个眼神是病态的执着。", "近乎贪婪地汲取着接触带来的每一分安全感。“带我走，或者杀了我...只要和你有关。”"]
+    ],
+    t_leg: [
+        ["他把膝盖抱得更紧了，整个人缩成一团拒绝接触。", "“那里...不是也会被打断吗？”", "冰冷的触碰。他紧紧闭着眼，在心里祈祷这一刻快点过去。"],
+        ["僵硬，但是在忍受。他试图理解这是不是新的检验标准。", "不自在地挪动了一下位置。“有点...痒...”", "以为是检查生长发育情况，所以他强迫自己不动。"],
+        ["习惯了这种接触。安静地任由你摆弄这具躯体。", "坐在床边，乖顺地稍微分开双腿，展示最大的信任。", "放松地靠着墙壁，甚至有点昏昏欲睡。“没有以前那么疼了，以前这里被打过。”"],
+        ["顺从地分开双腿，展示着绝对的臣服与接纳。", "在这具属于你的身体上，他没有任何秘密。", "乖巧得让人心惊。“随你处置。”", "单纯的信赖。如果是为了你，就算再次赤脚走进雪地似乎也可以。"]
+    ],
+    t_chest: [
+         ["你把手放在那尚显单薄的胸口。他看起来甚至有些生理性厌恶，想吐。", "心跳快得要爆炸了。“求你了...别...”他的声音带着明确的哭腔。", "紧紧闭着眼，那种触犯禁忌的恐慌让他几乎要昏厥。"],
+         ["“这...这是体检的一部分吗？”他困惑且不安，却不敢推开。", "“为什么要摸这里？”他纯真又残忍的问题让你动作一滞。", "他的手抓紧了床单，发出微弱的呜咽。“好奇怪...”"],
+         ["因为是你，所以他没有第一时间推开，他已经有些习惯这种越界。", "他羞耻地移开视线，却没有推开你的手。", "隔着薄薄的衬衫，你能感受到那里温热的跳动。他没有反抗，只是红了耳根。"],
+         ["“只要是你碰到的地方，好像都会奇怪地烧起来。”", "眼神变得迷离而不清醒。那是过早觉醒的、错误的依恋。“再重一点...”", "剧烈的喘息。“还要...更多吗？我哪里都能给你。”"]
+    ],
+    t_hip: [
+         ["他发出了一声受伤动物一样的惊喘，试图要把你踹开。", "即便不敢反抗，身体也在极度排斥这种接触。“不要...脏...”", "“求你停下，长官...真的很奇怪。”他语无伦次。"],
+         ["“长官？”他不解其意地扭动了一下，“那是...我要被打屁股了吗？”", "异常的僵硬。触碰那里对他来说只有体罚一个意义。", "只有不舒服的感觉。他试图把自己缩得更小一点来逃避这种感觉，却被你按住了。"],
+         ["羞耻感让他把脸埋进了膝盖里，耳朵红得滴血。但他没有挣扎。", "“很怪...”他小声说，手却下意识地抓住了你的衣角。", "习惯了被当作玩物，甚至开始觉得这是一种特殊的“疼爱”。", "“只要不是打我就好...”他是这么想的。"],
+         ["甚至带着一丝讨好地主动向后靠近，迎合你的手。", "“我是你的...对吧？全部都是。”哪怕在这种事情上。", "低沉的喘息。那种眼神里甚至有了一丝扭曲的期待。", "被玩弄的感觉已经深深刻在了骨子里，变成了愉悦的一部分。"]
+    ],
+    t_priv: [
+         ["绝对的暴行。哪怕只是触摸，他也发出了崩溃的尖叫。“啊啊啊——不！！”", "“不！不是那里！只有那里不行！求求你！杀了我吧！”", "被当作性玩物的本能恐惧让他彻底失态。", "你的手对他来说比烙铁还可怕。这是一种毁灭。"],
+         ["“长官？！不...这是不对的，书上说...这是不对的...”他满脸震惊。", "极度的羞耻让他满脸通红，大颗的眼泪砸了下来。", "虽然之前的教导让他不敢反抗命令，但这太过分了。", "他在呜咽。即便是不太懂事的他，也明确感到了那种侵犯的恶意。"],
+         ["“如果...这也是任务的一部分吗？”他声音颤抖，却没有动，眼眶含泪。", "羞耻得快要燃烧起来。“别看...求你了，至少别看。”", "压抑的闷哼。他依然觉得这是错误的，但他无法拒绝你。", "身体在你的爱抚下发生着可悲又诚实的反应，他对此感到绝望而兴奋。"],
+         ["“只要是你...哪怕这种事也...”眼神彻底迷乱，充满了某种病态的渴望。", "主动分开双腿，放弃了一切防备。“请...使用我吧，弄坏也没关系。”", "沉重黏腻的呼吸声充满了整个狭小的空间。", "在这地狱般的牢笼里，竟因你的侵犯而感到了这种极度的快感与依恋。", "“再过分一点...就算这里也全给你，只要别丢下我。”"]
+    ],
+    wall: [
+         "{B}默默走到墙角，背对着你站得笔直。腿在打颤，却纹丝不动。",
+         "无声的十分钟。墙壁上的划痕是他唯一能看的东西。房间里死寂一片。",
+         "你没让他动，他连眼泪都不敢擦，只是偶尔因为太累而换一条腿重心。",
+         "“我正在...反省。”即使声音带了哭腔，他依然在重复这句话。",
+         "冷风让他偶尔吸一下鼻子。他在害怕你会突然增加刑期。“脚好疼...”他心里想着。"
+    ],
+    spank_butt: [
+         "响亮的巴掌声在空旷房间回荡。{B}疼得立刻把身体绷紧，却死死咬住嘴唇不敢躲。",
+         "“错了...我知道错了！”每打一下，他就会随着痛感抽泣一声，眼泪瞬间涌出。",
+         "即使你停手了，他依然维持着那个羞耻的姿势，小声啜泣着，屁股上留下了红印。",
+         "并不是很重，但那种羞耻感让他把头埋在臂弯里不敢看你。“对不起，长官...”",
+         "哪怕挨打，他也只是紧紧抓着你的衣角，没有跑开。那一抹红色显得触目惊心。"
+    ],
+    chat: {
+        weak: [ "“对不起...我不该存在。”", "“对不起...我的存在是不是浪费了空气？”{B}似乎在重复之前被训斥的话。", "“我不记得妈妈的脸...因为她根本不存在。”他漠然地回答。", "{B}盯着地板，那是他唯一觉得安全的地方。身体还在微微发抖。", "“我今天做错什么了吗？”" ],
+        mid: [ "“长官，我想听故事...哪怕是假的也好。”", "“我也想变得像你一样强大，这样就不会疼了。”他认真地看着你的佩枪。", "“今天的面包也是硬的。”他把那块干面包藏进了口袋，当做宝贝。", "{B}观察着你的表情，试探性地往你身边挪了一厘米，试图靠近热源。", "“你在我的记录本上写了什么？说我不合格吗？”他很担心。", "“今天的白粥好像比昨天的稠一点点。”他注意到了这点微不足道的变化。" ],
+        high:[ "“只要你不走，这个笼子也没那么可怕。”", "[事件] {B}把头轻轻靠在冰冷的玻璃隔断上，看着你的倒影发呆。", "“你是带我来看这个世界的执灯人，对吗？”", "那种依赖的眼神沉重得几乎能压碎你的脊梁。" ]
+    },
+};
+
+const EVTS = {
+    // Pure Events
+    pure: [
+        {
+            txt:"{B}拿着一支没有水的笔，在起雾的窗户上画了一个丑丑的又歪歪扭扭的东西。<br>“这是你，长官。”他回头小心地笑着，眼神明亮。",
+            opts: [
+                OPS.pure("夸奖他的画", "你摸了摸他的头：“观察得很仔细。”因为得到的肯定，他把那扇窗户护在身后。"),
+                OPS.norm("不做评价", "{B}有些失落地垂下手，默默用袖子把窗户擦掉了。“下次会更好的。”"),
+                OPS.strict("擦掉: 加深创伤", "你冷冷地抹去了人影。“多余的行为。”他的眼神暗了下去，像做错事一样道歉。")
+            ]
+        },
+        {
+            txt:"“书上说，外面除了雪还有绿色的东西，叫‘草地’。”{B}抱着膝盖，认真地问你，“能在上面打滚而不被冻死吗？是真的吗？”",
+            opts: [
+                OPS.pure("描述春天的样子", "他听得入迷：“真好...如果有一天能亲眼看到就好了。”他的眼里有了微弱的光。"),
+                OPS.norm("机密信息", "“这不是你现在的权限能知道的事。”{B}失望地闭上了嘴，把自己缩得更紧了。"),
+                OPS.strict("斥责软弱", "“那是给猪猡的乐园。你是狼。”他吓得抖了一下，强忍泪水。")
+            ]
+        },
+        {
+            txt:"{B}突然凑过来，好奇地盯着你的手背看。“这里有条血管...我也一样有。”他把自己的小手贴上来比对着，“我们是一样的生物，对吗？”",
+            opts: [
+                OPS.pure("握住他的手肯定", "你传递过去一份体温。他露出满足的傻笑：“真温暖。”"),
+                OPS.norm("抽回手", "“别碰我。”他无措地蹭了蹭手：“对不起，是不是我很脏？”"),
+                OPS.strict("否认", "“我是监管者，你是物品。”那句话像鞭子。他把手默默藏到了背后。")
+            ]
+        },
+        {
+            txt:"“长官，你会有不开心的时候吗？”他试探着碰了碰你的袖子，“这时候如果吃糖会好起来吗？”",
+             opts: [
+                OPS.pure("只有你会让我操心", "“如果你乖一点，我会好受些。”他用力点头：“我会很乖、很乖的。”"),
+                 OPS.norm("如果你达标我会开心", "“当你完成训练时。”“即使很痛也可以吗？”他咬牙问，“那我也去做。”"),
+                 OPS.strict("长官没有感情", "“收起愚蠢的问题。”他像被泼了冷水，没敢再问。")
+            ]
+        },
+        {
+            txt:"窗外一只冻僵的飞鸟撞在玻璃上。{B}为了它难过了好久。<br>“它虽然死了，但是它是自由的，对吧？”",
+            opts: [
+                OPS.pure("一起埋葬鸟尸", "在花盆里举行的秘密葬礼。他抬头看你，眼里是不设防的信赖。"),
+                OPS.norm("那是弱者的末路", "“太弱才会被折断。”他若有所思地点头。"),
+                OPS.strict("丢进焚化炉", "“有机垃圾。”眼里的某种纯真随着那只鸟一起被烧成了灰。")
+            ]
+        },
+        {
+            txt:"他拿出半块发霉的饼干。“长官...今天是你的生日吗？这是我省下来的。”他并不真的知道日期，只是想送给你。",
+            opts: [
+                 OPS.pure("假装吃一口", "“谢谢。”他笑得像得到肉骨头的小狗，空气是甜的。"),
+                 OPS.strict("惩罚藏匿违禁品", "你扔掉了饼干。他看着它掉进垃圾桶，嘴唇发白地快哭了。"),
+                 OPS.norm("没收", "“也没收。”他失望地垂手：“以为你会喜欢的。”")
+            ]
+        },
+        {
+            txt:"“昨天我梦见了……太阳是黑色的。”他有些恐惧地抓着栏杆，“就像焚化炉一样黑，这是不好的征兆吗？”",
+             opts: [
+                 OPS.pure("安慰: 梦是反的", "“因为因为你渴望光。”他稍微安心了些。"),
+                 OPS.strict("加训: 杜绝胡思乱想", "你给他加了一组深蹲。他在气喘吁吁中确实没空想梦了。"),
+                 OPS.norm("忽略: 无稽之谈", "“别讲胡话。”他闭上嘴，继续盯着不存在的太阳。")
+            ]
+        },
+        {
+            txt:"衣服短了一截，露出手腕上发紫的冻疮。他一直在偷偷扯袖子试图盖住。",
+             opts: [
+                 OPS.pure("用手帕包住", "你给他裹上了旧手帕。他呆呆看着，像授勋一样不敢动。"),
+                 OPS.strict("嘲笑软弱", "“这点冷都忍不了？”他立刻停止动作，任由冻疮暴露。"),
+                 OPS.norm("申请换装", "仅仅是登记。“下周吧。”公事公办。")
+            ]
+        },
+        {
+             txt: "一只蜘蛛在墙角结网。他看了那个网好久好久。<br>“它在努力造房子...可是这里没有飞虫给它吃。”",
+             opts: [
+                 OPS.pure("生命在于坚持", "“正因为没有才要等。”他若有所思。"),
+                 OPS.strict("捣毁蛛网", "扫帚无情地摧毁了奇迹。“只有生存。”他低头不语。"),
+                 OPS.norm("自生自灭", "“那是它的命。”他叹气，仿佛也是叹息自己。")
+             ]
+        },
+        {
+             txt: "{B}不知道从哪里学来的，试图笨拙地给你敬了一个不标准的军礼。<br>“长官！为了...胜利！”眼神认真。",
+             opts: [
+                 OPS.pure("纠正姿势", "手把手的指导。<br>“这样更有力。”他觉得自己离你近了一步。"),
+                 OPS.strict("打击: 四不像", "“像个滑稽的猴子。”他涨红了脸，难堪地放下手。"),
+                 OPS.norm("点头", "只是点头。他有些小小的满足，但更多的是失落。")
+             ]
+        },
+        {
+             txt: "水管坏了，滴水声无限放大。<br>“像是在倒数...我们的时间也是被这样倒数着吗？”",
+             opts: [
+                  OPS.pure("握手: 别怕","“只要我没说结束，就不会结束。”他抓住了你的手。"),
+                  OPS.strict("让他塞住耳朵","“心不静的人才会听到噪音。”他只好蒙住头逃避。"),
+                  OPS.norm("无视","你翻了个身。他知道那是拒绝，安静了下来。")
+             ]
+        },
+        {
+              txt: "他在旧书上看到了‘妈妈’。<br>“长官，我是您造出来的吗？还是说我也有过...那个人？”",
+              opts: [
+                   OPS.pure("你现在有我","“现在我是监护人。”他消化许久，然后点头：“这就够了。”"),
+                   OPS.strict("否定: 你是产品","“你是编号。那是多余的概念。”他眼神空洞地点头：“明白。”"),
+                   OPS.norm("不予置评","“都不重要。”他合上书，不再追问。")
+              ]
+        },
+        {
+               txt: "停电了。应急红光将房间染成血色。他贴在墙角发抖。<br>“灯什么时候回亮？”",
+               opts: [
+                    OPS.pure("抱到光亮处","你打开了手电。他像向日葵一样挤在你身边。"),
+                    OPS.strict("黑暗训练","“这种程度就怕了？站好！”他在发抖中被迫直视黑暗。"),
+                    OPS.norm("一会就好","“维修班在工作了。”他还是很怕。")
+               ]
+        }
+    ],
+
+    // Late Game (Week 5+)
+    late: [
+         {
+             txt: "窗外的暴雪震耳欲聋。他异常平静。“如果雪把门堵死了，我们是不是就永远出不去了？”他语气里有一丝期待。",
+             opts: [
+                 OPS.pure("答应那也不错", "“那样我们就自由了。”他露出真心的笑：“那就再下大一点吧。”"),
+                 OPS.strict("训斥逃避", "“挖掘机只需15分钟。别做梦。”希望的光消失了。"),
+                 OPS.norm("检查通风", "“只要通风管没坏就行。”“哦...”他并不介意死活。")
+             ]
+         },
+         {
+             txt: "他连续几天沉默。突然拿出藏在袖子里的磨尖牙刷柄。<br>“长官，如果坏人来带我走...我可以用这个保护我们吗？”",
+             opts: [
+                 OPS.pure("没收并承诺保护", "“你不需要弄脏手。有我在。”他抱着你哭了。"),
+                 OPS.strict("指导刺杀技巧", "你冷酷地教他刺哪里致命。他的眼神变得像狼一样凶狠。"),
+                 OPS.norm("简单缴械", "“不许藏这种东西。”失去‘武器’让他觉得很不安。")
+             ]
+         },
+          {
+             txt: "广播传来了带有电流声的模糊通知。{B}察觉到了你的紧绷。“是要结束了吗？我们可以不分开吗？”",
+             opts: [
+                 OPS.pure("谎称没事", "“别多想。”他知道你在撒谎，但选择相信最后的温柔。"),
+                 OPS.strict("准备出鞘", "“作为兵器，随时为您而死。”他站直了身体。"),
+                 OPS.norm("沉默", "沉默在空气中蔓延，比回答更像回答。")
+             ]
+         },
+         {
+             txt: "他看着镜子里消瘦却精悍的自己。<br>“那个会哭的小孩子死在镜子里了。这是你想要的作品吗？”",
+             opts: [
+                  OPS.pure("你永远是那个孩子", "“在我这里不需要伪装。”冷酷的面具碎了一角。"),
+                  OPS.strict("完美形态", "“现在的你比以前完美。”他毫无感情地笑了：“谢谢您的塑造。”"),
+                  OPS.norm("更有力量了", "“力量是资本。”他放下手，眼神冷硬。")
+             ]
+         },
+         {
+             txt: "深夜，他盯着电子锁发呆。<br>“只要输入密钥...真的有外面吗？还是只是另一个更大的笼子？”",
+             opts: [
+                 OPS.pure("肯定自由", "“那里有真正的风。”他的眼燃起最后的火苗。"),
+                 OPS.strict("打消念头", "“外面只有辐射和死亡。”光熄灭了：“那我还是待在笼子里吧。”"),
+                 OPS.norm("不知道", "“哪里都是战场。”他叹息：“那我不想出去了。”")
+             ]
+         }
+    ],
+
+    eros: [
+        {
+            txt: "他换衣服有些过于缓慢，似在等待某种审视。<br>“我...长大了吗？”",
+            opts: [
+                OPS.pure("帮他快速穿好", "你甚至没看他一眼：“由于。训练时间。”他尴尬地红了脸。"),
+                OPS.norm("冷漠注视", "沉默的审视让他紧张，手笨拙地扣着扣子。"),
+                OPS.eros("停留目光", "你扫过他光裸的脊背。背部绷紧了，却没有躲。")
+            ]
+        },
+        {
+            txt: "深夜无意识的呻吟。他抓住了你的手蹭向大腿。<br>梦里在渴望什么？",
+            opts: [
+                OPS.pure("冷毛巾降温", "他惊醒后慌乱瑟缩：“对不起！我做了个奇怪的梦...”"),
+                OPS.norm("拍醒", "“不准发出声音。”他满身大汗地坐起。"),
+                OPS.eros("帮他解决", "压抑的呜咽。他没有醒，身体诚实地在你手里颤抖流泪。")
+            ]
+        },
+        {
+            txt:"“洗澡水流过身体的时候，我会想起你的手。”他低着头说。",
+             opts: [
+                OPS.pure("帮他擦干头发", "“别胡思乱想。”他在毛巾下闷闷地说：“控制不住。”"),
+                OPS.norm("无视", "你当作没听见。他失望地抿紧嘴。"),
+                OPS.eros("感受真正的温度","你把他推到墙上。“比水好多了吗？”他急促喘息着分开腿。")
+            ]
+        }
+    ],
+
+    broken: [
+         {
+            txt:"正试图用指甲去抠那个无法愈合的伤口，看着血流出来笑了。<br>“只有痛才知道我还活着。”",
+             opts: [
+                OPS.pure("阻止", "你抓住他的手。他崩溃大哭：“为什么在意我？让我烂掉啊！”"),
+                OPS.strict("递刀: 再深点", "“我可以帮你。”他绝望地拿着刀笑了：“期待我展示什么表演吗？”"),
+                OPS.norm("包扎", "“别弄脏地板。”他麻木地不再笑了。")
+            ]
+        },
+        {
+            txt:"盯着空白的墙壁自言自语。“他说我是废物。对，我知道我是废物。别打了。”",
+             opts: [
+                OPS.pure("拥抱安抚", "你紧紧抱住他。僵硬的身体终于在这个怀抱里软化下来。"),
+                OPS.strict("立正喝止", "一声令下的条件反射。用服从性暂时压倒了疯狂。"),
+                OPS.norm("镇静剂", "一针下去。他像被关机的机器一样倒下了。")
+            ]
+        }
+    ]
+};
+
+const ITEMS = [ // Items
+   { id:1, t:'shop', n:'过期果味糖', c:10, ap:1, info:"只有甜味剂味道的粉末。但他把它含在嘴里很久都不舍得咽下，眼睛因为这虚假的甜蜜而第一次亮了起来。<br>“好甜...这是魔法吗？”", eff:{bd:3, sa:2}},
+   { id:2, t:'shop', n:'热肉酱浓汤', c:30, ap:1, info:"这里从未有过这么高级的食物。热汤下肚，他苍白的小脸终于有了点活人的血色。他连碗底都舔干净了，意犹未尽地看着你。<br>意犹未尽地看着你。", eff:{bd:5, sa:4, tr:-2}},
+   { id:3, t:'shop', n:'绘本《笼中鸟》', c:50, ap:2, res:true, info:"在这个没有颜色的世界里，那几页彩色的图画成了他唯一的宝藏。他指着那页画着天空的说：“我会飞吗？”你沉默了。", fx:"sa+ xp+", eff:{sa:8, bd:4, xp:2}},
+   { id:4, t:'shop', n:'黑色皮革项圈', c:80, ap:1, res:true, info:"在这个关系畸形的地方，当你把它扣在他脖子上“咔哒”一声时，他摸了摸那处冰凉，竟然露出了安心的表情，仿佛真的属于你了。<br>“这样就不会丢了吧？”", req:30, fx:"bd+ xp+", eff:{bd:8, xp:6}},
+   { id:5, t:'shop', n:'未知花种', c:40, ap:1, res:true, info:"明知种在这个不见天日的房间里是徒劳，他还是每天给它浇水。那是比他自己还要脆弱的希望。<br>“它会开花的，你说了会。”", fx:"sa+", eff:{sa:8, bd:3}},
+   { id:6, t:'shop', n:'旧式音乐盒', c:110, ap:1, res:true, info:"发条转动，单调的机械音流淌出来。在那些被噩梦惊醒的夜晚，这成了唯一能让他重新入睡的安魂曲。<br>他听得出神。", req:50, fx:"sa++", eff:{sa:12, bd:8, tr:-3}},
+   { id:7, t:'shop', n:'厚绒毛毯', c:60, ap:1, res:true, info:"你将毯子把他裹成了个球。在这零下20度的冬夜，物理上的温暖有时候比什么都重要。<br>他往里面缩了缩，露出一双眼睛看着你。", fx:"sa+ tr-", eff:{bd:5, tr:-2, sa:3}},
+   // Secret
+   { id:10, t:'shop', n:'[文档]E-88处决令', c:80, ap:0, uniq:true, info:"你从废纸堆里找到的关键信息。上面被涂抹的一行字写着：“前任监管者试图带实验体私奔，两人均被就地处决。失败原因：产生了名为‘爱’的不可控变量。", req:40, eff:{inv:1}},
+   { id:11, t:'shop', n:'[道具]旧门禁卡', c:150, ap:0, uniq:true, info:"一张属于死去管理员的权限卡。早已过期，但芯片里残留的代码也许能骗过最外层的那扇生锈的门。<br>你偷偷藏在了袖口。", req:60, eff:{inv:1, xp:2}},
+   { id:12, t:'shop', n:'[药物]精神反制剂', c:200, ap:0, uniq:true, info:"真理部严禁持有的黑市药物。虽然副作用巨大，但能短暂冲破洗脑程序，让他找回片刻真正的自己。<br>这是最后的保险。", req:80, eff:{inv:1, tr:5, sa:-10}},
+   // Task (Extreme Penalty)
+   // Remove undefined Cost by manually setting c:0 in code logic, or adding it here for consistency
+   { id:20, t:'task', n:'背诵集权语录', c:0, ap:2, info:"“思考即是背叛。”他一遍遍机械重复，眼神从灵动变得呆滞。那个灵魂正在慢慢死去。<br>灵魂死去。", eff:{tr:4, bd:-1, sa:-8}},
+   { id:21, t:'task', n:'强光审讯训练', c:0, ap:2, info:"3000瓦的强光直射眼球。不能闭眼，不能睡觉。直到他的意识被洗刷成一张只能听懂命令的白纸。<br>结束后他捂着眼睛哭了很久。", eff:{tr:6, bd:-2, sa:-12}},
+   { id:22, t:'task', n:'重罚: 鞭笞', c:0, ap:1, info: "不仅仅是疼痛，更是一种人格上的极大羞辱。皮带抽在他身上留下长长的红印，“对不起！我不敢了！”他哭喊着，却不敢逃跑。", eff:{tr:5, bd:-3, xp:3, sa:-5}},
+   { id:23, t:'task', n:'冰水耐受测试', c:0, ap:2, info:"在那巨大的冰桶里，他剧烈颤抖，嘴唇发紫。而在被捞出来的瞬间，他在渴望的竟然是那个把他推下去的人的体温。", eff:{tr:8, bd:2, sa:-15, xp:1}},
+   { id:24, t:'task', n:'高压电击矫正', c:0, ap:3, info:"因为恐惧而回答错误。因为回答错误而再次被电击。这是一个把人变成疯狗的死循环。<br>空气里充满了焦糊味和他的惨叫。之后很长一段时间，他都转头不再看你。", eff:{tr:15, bd:-8, sa:-25}},
+   { id:25, t:'task', n:'剥夺感官禁闭', c:0, ap:3, info:"绝对的黑暗，听不见任何声音。哪怕只有三个小时，再出来时他连怎么发声都忘了，只能在床上抱住枕头确认自己还活着，全身都在痉挛。<br>精神几近崩溃。", eff:{tr:10, bd:3, sa:-20}},
+   // Out
+   { id:30, t:'out', n:'走廊放风', c:0, ap:2, info:"走廊的铁窗紧闭，但至少比房间宽敞。皮靴踩在金属地板上的回声，听起来那样空旷又寂寞。<br>“好安静啊...”。", eff:{tr:-1, bd:3, sa:5}},
+   { id:31, t:'out', n:'废弃中庭', c:0, ap:3, info:"那里居然有一棵早就枯死的老树。他站在树下看了很久，直到暴雪几乎要把他变成一个雪人。<br>“春天会来吗？”。", eff:{tr:-2, bd:5, sa:8}},
+   { id:32, t:'out', n:'塔楼顶层', c:20, ap:3, info:"狂风几乎要把人吹飞。但他紧紧抓着护栏，第一次俯瞰了那座以霓虹为血脉的城市。他的眼中第一次映入了真正的天空，哪怕它是红色的。", req:30, eff:{tr:-1, bd:8, sa:10}},
+   { id:33, t:'out', n:'地下黑市入口', c:30, ap:3, info:"这里充满了机油、汗臭和廉价营养膏的味道。如此肮脏，却充满了从未见过的、活着的热气。<br>他紧紧抓着你的手，生怕走丢。", req:50, eff:{tr:-3, bd:5, sa:6, xp:3}},
+];
+
+const Game = {
+    d: {
+        wk:1, day:1, money:100, ap:3, maxAp:3,
+        nameUser:'Monitor', nameBoy:'Al',
+        runCount: 0,
+        tr:0, maxTr:50, sa:100, bd:0, xp:0, inv:0,
+        unlocked: [],
+        failCount: 0,
+        curTab: 'shop' // 1. Fix: Default tab initialization
+    },
+    conf: {
+        targs: {1:10, 2:25, 3:45, 4:70, 5:95, 6:125},
+    },
+
+    start: function(){
+        let i_u = document.getElementById('u_name').value;
+        if(i_u) this.d.nameUser = i_u;
+        let i_b = document.getElementById('b_name').value;
+        if(i_b) this.d.nameBoy = i_b;
+
+        document.getElementById('p-intro').style.display='none';
+        let pg = document.getElementById('p-game');
+        pg.style.display = 'grid';
+        setTimeout(()=>pg.classList.add('visible'), 50);
+
+        this.log("[SYS] NIGHTMARE・COLD WINTER 协议已加载。", "t-sys");
+        this.log(`> 视窗开启。你看见角落里站着${this.d.nameBoy}。`, "t-sys");
+        this.log(`“门开了...你是新来的看守吗？”`, "t-boy");
+        this.showAtmo('dawn'); // First day dawn
+        this.render();
+        this.d.curTab = 'shop'; // Force default tab
+        this.listItems('shop');
+    },
+
+    act: function(type, param) {
+        if(this.d.ap < 1) { this.log("[WARN] AP耗尽。请熄灯。", "t-warn"); return; }
+        this.d.ap--;
+        if(type === 'touch') this.handleTouchLogic(param);
+        else if(type === 'basic') this.handleBasic(param);
+        if(Math.random()>0.5) { // Ensure sanity is integer
+            this.d.sa = Math.max(0, parseInt(this.d.sa) - 1);
+        }
+        this.render();
+    },
+
+    handleTouchLogic: function(part) {
+        let dirty = ['chest','hip','priv'].includes(part);
+        let nice = ['face','hand','leg'].includes(part); // Soft touches
+        let bd = this.d.bd, xp = this.d.xp;
+        let bdChg = 0, trChg = 0, xpChg = 1;
+
+        if (bd < 25 && nice) {
+             // Stranger phase
+             this.log(`> 接触: [${part}]`, 't-act');
+             this.log("他像被烫到一样缩回去了。你们还太陌生，这样的接触只会让他不安。", "t-sys");
+             this.log("“别...不习惯这样。”", "t-boy");
+             // No bond gain
+        }
+        else if (bd < 50) {
+            // Unbonded
+            if(dirty) {
+                bdChg = -5; trChg = 3; xpChg = 1;
+                this.log(`[!] 强行接触敏感部位导致了抵触。`, 't-warn');
+                this.handleTouchResult(part, bdChg, trChg, xpChg);
+            } else {
+                bdChg = (part==='hair')?3:1; trChg=0;
+                this.handleTouchResult(part, bdChg, trChg, xpChg);
+            }
+        } else {
+            // Bonded
+             if(dirty) {
+                if(xp > 60) { bdChg = 0; trChg = 0; xpChg = 3; }
+                else { bdChg = -1; trChg = 1; xpChg = 2; }
+             } else { bdChg = 3; trChg = 0;}
+             this.handleTouchResult(part, bdChg, trChg, xpChg);
+        }
+    },
+
+    handleTouchResult: function(part, b, t, x) {
+        this.mod({bd:b, tr:t, xp:x});
+        // Text
+        let lv = 0;
+        let bd = this.d.bd;
+        if(bd >= 70) lv = 3; else if(bd >= 50) lv = 2; else if(bd >= 20) lv = 1;
+
+        let pool = TXT['t_'+part][lv] || TXT['t_'+part][0];
+        let map = { hair:'抚摸头发', face:'抚摸脸颊', hand:'牵手', leg:'安抚腿部', chest:'触碰胸口', hip:'触碰臀部', priv:'侵犯下体' };
+        this.log(`> 接触: [${map[part]}]`, 't-act');
+        this.log("“"+_U.p(_U.r(pool), this.d.nameBoy)+"”", 't-boy');
+    },
+
+    handleBasic: function(mode) {
+        if(mode === 'wall') {
+            this.log(`> 惩罚: [罚站]`, 't-act');
+            this.log(_U.p(_U.r(TXT.wall), this.d.nameBoy), 't-sys');
+            this.mod({tr:2, bd:-1, sa:-1});
+        }
+        else if(mode === 'spank') {
+             this.log(`> 惩罚: [扇耳光]`, 't-act');
+             this.log(_U.p(_U.r(TXT.spank_butt), this.d.nameBoy), 't-boy');
+             this.mod({tr:4, bd:-4, xp:1, sa:-2});
+        }
+        else if(mode === 'chat') {
+            this.log(`> 交互: [谈心]`, 't-act');
+            let pool = [];
+            if(this.d.bd > 70) pool = TXT.chat.high; else if(this.d.bd > 30) pool = TXT.chat.mid; else pool = TXT.chat.weak;
+            this.log(_U.p(_U.r(pool), this.d.nameBoy), 't-boy');
+            this.mod({bd:3});
+        }
+    },
+
+    tab: function(t, el) {
+        this.d.curTab = t;
+        document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
+        el.classList.add('active');
+        this.listItems(t);
+    },
+
+    listItems: function(type) {
+        let box = document.getElementById('list-c');
+        if(!box) return;
+        box.innerHTML = '';
+        ITEMS.forEach((it) => {
+            if(it.t !== type) return;
+            if(it.uniq && this.d.unlocked.includes(it.id)) return;
+            let on = this.d.unlocked.includes(it.id) && it.res; // is owned and reusable
+
+            let card = document.createElement('div');
+            card.className = "card";   if(on) card.classList.add('reusable');
+
+            // 3. Hide cost if 0/undefined for task/out
+            let costStr = "";
+            let cost = it.c || 0; // Fix Nan
+            if(on) {
+                costStr = `0/${it.ap} AP`;
+            } else {
+                costStr = (cost > 0) ? `${cost}C/${it.ap}AP` : `${it.ap} AP`;
+            }
+
+            let lock = false; let msg = ""; let can = true;
+            if(!on && it.req && this.d.bd < it.req) { lock = true; msg=`(信任>=${it.req})`; }
+            if(!on && cost > 0 && this.d.money < cost) { can = false; }
+            if(this.d.ap < it.ap) can = false;
+
+            if(lock) { card.classList.add('locked'); msg += " [LOCKED]"; }
+            else if(!can) { card.style.borderColor = "#611"; msg += " [不可用]"; }
+
+            card.innerHTML = `<div class="card-h"><span class="card-n">${it.n}</span><span class="card-c">${costStr}</span></div><div class="card-tip">${msg}</div>`;
+
+            if(!lock) {
+                card.onclick = () => {
+                    if(this.d.ap < it.ap) return this.log("AP不足。", "t-warn");
+                    if(!on && cost > 0 && this.d.money < cost) return this.log("经费不足。", "t-warn");
+                    this.buy(it, on);
+                }
+            }
+            box.appendChild(card);
+        });
+    },
+
+    buy: function(it, isOn) {
+        this.d.ap -= it.ap;
+        if(!isOn && it.c) { // 2. Fix NaN: Check it.c before subtracting
+             this.d.money = parseInt(this.d.money) - parseInt(it.c);
+        }
+        this.mod(it.eff);
+        if((it.res||it.uniq) && !isOn) this.d.unlocked.push(it.id);
+        this.render();
+        this.log(`> 操作: [${it.n}]`, 't-act');
+        this.log(_U.p(it.info, this.d.nameBoy), 't-sys');
+    },
+
+    mod: function(eff) {
+        if(!eff) return;
+        // Fix NaN with _U.toInt
+        if(eff.tr) this.d.tr = Math.max(0, _U.toInt(this.d.tr) + _U.toInt(eff.tr));
+        if(eff.sa) this.d.sa = Math.max(0, Math.min(100, _U.toInt(this.d.sa) + _U.toInt(eff.sa)));
+        if(eff.bd) this.d.bd = Math.max(0, Math.min(100, _U.toInt(this.d.bd) + _U.toInt(eff.bd)));
+        if(eff.xp) this.d.xp = Math.max(0, _U.toInt(this.d.xp) + _U.toInt(eff.xp));
+        if(eff.inv) {
+            this.d.inv = _U.toInt(this.d.inv) + _U.toInt(eff.inv);
+            document.getElementById('v-inv-box').style.display='block';
+            this.log(`[!] 线索 (${this.d.inv}/3)`, "t-warn");
+        }
+        this.render();
+        if(this.d.sa < 50) setTimeout(()=>this.endGame('sanity'), 500);
+        if(this.d.xp >= 150) setTimeout(()=>this.endGame('ped'), 500);
+    },
+
+    render: function() {
+        const _t = (i,t) => document.getElementById(i).innerText = t;
+        const _w = (i,v,m) => document.getElementById(i).style.width = Math.min(100, (v/m)*100) + "%";
+        _t('v-w', this.d.wk); _t('v-d', this.d.day);
+        _t('v-mn', _U.toInt(this.d.money)); // 2. Fix NaN here visually
+        _t('v-inv', this.d.inv);
+
+        let cap = this.conf.targs[this.d.wk]||999;
+        _t('s-tr-t', `${this.d.tr} / ${cap}`); _w('bar-tr', this.d.tr, 150);
+        _t('s-sa-t', this.d.sa); _w('bar-sa', this.d.sa, 100);
+        _t('s-bd-t', this.d.bd+"%"); _w('bar-bd', this.d.bd, 100);
+        _t('s-xp-t', this.d.xp); _w('bar-xp', this.d.xp, 100);
+        _t('lab-n', this.d.nameBoy); _t('s-ap-t', `${this.d.ap}/${this.d.maxAp}`); _w('bar-ap', this.d.ap, this.d.maxAp);
+        // Refresh only if tab needed, usually handle by tab click, but re-list for updates
+        // To avoid resetting scroll, we only check updates if money/ap change, handled by separate mod call to render.
+        this.listItems(this.d.curTab);
+    },
+
+    log: function(msg, cls) {
+        let l = document.getElementById('logger');
+        let div = document.createElement('div');
+        div.className = "para " + (cls||"");
+        div.innerHTML = msg;
+        l.appendChild(div);
+        l.scrollTop = l.scrollHeight;
+    },
+
+    // [ATMOSPHERE SHOW]
+    showAtmo: function(type) {
+         let txt = _U.r(ATMO[type]);
+         this.log(txt, 't-atmo');
+    },
+
+    showEvent: function(isNight) {
+        if(this.d.day < 6) return;
+        if(this.d.day % 2 !== 0 && !isNight) return;
+
+        let pool = []; let t = "Random";
+        if(this.d.wk >= 5) {
+            pool = EVTS.late;
+            t = "Final Phase";
+        }
+        else if(this.d.tr > 90) { pool = EVTS.broken; t = "Critical Mental"; }
+        else {
+            if(this.d.xp>=50 && this.d.bd>20 && (Math.random()>0.5)) pool = EVTS.eros;
+            else if(Math.random()<0.3 && this.d.wk>=5) pool = EVTS.late;
+            else pool = EVTS.pure;
+        }
+        if(!pool || pool.length===0) pool = EVTS.pure;
+
+        let ev = _U.r(pool);
+        document.getElementById('m-title').innerText = t; // Fixed: Use title element
+        document.getElementById('m-title').innerText = t;
+        document.getElementById('m-text').innerHTML = _U.p(ev.txt, this.d.nameBoy);
+        let ob = document.getElementById('m-opts'); ob.innerHTML='';
+        ev.opts.forEach(o=>{
+            let b = document.createElement('button');
+            b.className = 'btn-opt';
+            b.innerHTML = `<b>></b> ${o.t}`;
+            b.onclick=()=>{
+                document.getElementById('m-popup').classList.remove('show');
+                this.mod(o.eff);
+                this.log(`> [事件] 选择已执行。`, "t-event");
+                this.log(_U.p(o.result, this.d.nameBoy), "t-quote");
+            }
+            ob.appendChild(b);
+        });
+        document.getElementById('m-popup').classList.add('show');
+    },
+
+    next: function() {
+        if(this.d.ap === this.d.maxAp && !confirm("直接结束今日?")) return;
+
+        this.showAtmo('dusk'); // End with Atmosphere text
+
+        this.d.day++;
+        this.d.ap = this.d.maxAp;
+        this.d.sa = Math.min(100, _U.toInt(this.d.sa)+1); // Integer fix
+
+        // Trauma bleed
+        if(this.d.tr > 80) {
+            this.d.bd = Math.max(0, this.d.bd - 2);
+            this.log("[WARN] 极度创伤动摇了信任: Bond -2", "t-warn");
+        } else if(this.d.tr > 50) {
+             this.d.bd = Math.max(0, this.d.bd - 1);
+        }
+
+        if(this.d.sa > 70 && this.d.xp > 0) this.d.xp = Math.max(0, this.d.xp - 4);
+
+        if(this.d.day > 7) {
+            setTimeout(() => this.checkWeek(), 1500);
+        } else {
+             setTimeout(() => {
+                 this.log(`<br>--- Day ${this.d.day} Start ---`, 't-sys');
+                 this.showAtmo('dawn'); // Start next day with atmo
+                 if(this.d.sa < 20) this.log("!!! SANITY LOW !!! 濒临崩溃", "t-warn");
+                 if(this.d.day >= 6 && this.d.day % 2 === 0) setTimeout(()=>this.showEvent(true), 500); // Check day 6 rule
+                 this.render();
+             }, 1000);
+        }
+    },
+
+    checkWeek: function() {
+        let g = this.conf.targs[this.d.wk];
+        this.log(`=== Week ${this.d.wk} Review ===Target: ${g}`, 't-act');
+        if(this.d.tr >= g) {
+            this.d.money = _U.toInt(this.d.money) + 200; // 2. Fix NaN logic
+            this.log("Target Met. Budget +200C.", "t-sys");
+        } else {
+            this.d.failCount++;
+            this.log(`FAIL (${this.d.failCount}/3). Punishment Initiated.`, "t-warn");
+            this.mod({tr:20, sa:-25, bd:-10});
+            if(this.d.failCount >= 3) return setTimeout(()=>this.endGame('fired'), 2000);
+        }
+        this.d.wk++;
+        if(this.d.wk > 6) setTimeout(()=>this.playEnding(), 1500);
+        else {
+             this.d.day=1;
+             this.d.ap=this.d.maxAp;
+             this.d.tr=Math.max(0, this.d.tr-3);
+             this.d.sa = Math.min(100, _U.toInt(this.d.sa)+10);
+             this.log(`\n>>> Week ${this.d.wk} Start.`, 't-sys');
+             this.showAtmo('dawn');
+             this.render();
+             // Ensure tab refreshing logic is safe
+             this.d.curTab = 'shop';
+             this.listItems('shop');document.querySelector('.tabs button').classList.add('active'); // Reset UI slightly
+        }
+    },
+
+    endGame: function(t) {
+        let head="", body="";
+        if(t==='sanity') {
+             head="BAD END: 破碎的瓷器";
+             body=`过度的痛苦与压力如同铁锤，彻底粉碎了他脆弱的精神防线。理智指标归零。<br><br>你呼唤他的时候，他只是坐在角落流着口水，眼神像是一扇通往虚空的破碎窗户。他不知道冷，不知道饿，甚至在机械臂将他拖向垃圾处理口时，连求救都不会了。<br>他没能成为兵器，只是你的一件失败品。次日，你的房间里甚至没有留下他的一根头发。`;
+        }
+        else if(t==='fired') {
+             head="GAME OVER: 监察官的肃清";
+             body=`“你太无能了，${this.d.nameUser}。”长官的声音冷得像周围的冻土。<br><br>因为连续未能达成创伤指标，上峰已经对你失去了耐心。在这个没有春天的世界里，同情心就是最不可饶恕的病毒。<br>你被强行带出了养育室。当你最后一次回头时，只看到新的监管者拿着足以令人发疯的电击器走进了房间。<br>枪声在你脑后响起。这是对你的解脱，但对他而言，地狱才刚刚开始。`;
+        }
+        else if(t==='ped') {
+             head="CRIMINAL END: 畸形的贪念";
+             body=`“我以为你是在塑造士兵，结果你在制造宠物。”宪兵队的队长看着监控记录，嘴角带着毫不掩饰的鄙夷。<br><br>那些深夜里的抚摸，那些不自然的拥抱，都被红外摄像头记录得一清二楚。<br>当他们破门而入时，他正蜷缩在你的床上，衣衫不整，眼神中没有战士的冷酷，只有被完全驯化的、令人作呕的顺从。<br>你因严重渎职罪被就地枪决。<br>而在意识消散的最后一刻，你听说他将被转送去首都的红灯区——毕竟，你已经帮他们完成了最艰难的“调教”工作。`;
+        }
+        this.showEnd(head, body);
+    },
+
+    playEnding: function() {
+        let tr=this.d.tr, bd=this.d.bd, xp=this.d.xp, inv=this.d.inv;
+        let t="", x="";
+        if (xp >= 100 && bd < 99) {
+             t="DESTINY END: 堕入黑夜的共生";
+             x=`六周的评估期结束。他没有成为所谓完美的冷血武器，却进化出了更可怕的特质——一种只针对你的依恋。<br><br>在强制分离的那个清晨，他用藏起来的小刀杀了看守，血溅了他一脸，但他看着你的眼神却在笑。<br>“没有谁能审判我们，”他在你耳边低语，让你想起了他属于那个恶魔的基因。<br><br>你们趁乱逃离，背叛了整个世界。在边境那赤红色的荒原上，在那没有法律的黑夜里，你们的身体交合在了一起。道德，那是弱者的枷锁；而你们，是自由的罪人。<br><br>分不清白天还是黑夜，在警报声和枪声中，在极乐中，你作为恋童癖被追杀而来的军队扫射至死。`;
+        }
+        else if(inv >= 3 && bd >= 100) {
+             t="TRUE END: 奔向猎户座";
+             x=`六周，够了。足够你搜集到所有密钥，足够你摸清换岗的规律，也足够他学会怎么用那张失效的门禁卡黑进系统。<br><br>在一个几乎能栋死人的暴雪夜，警报声响彻了整个地下掩体。然而那道防爆门终究“轰”地一声在你们身后彻底关闭，把追兵永远关在了地底。<br><br>这是你，也是他第一次真正地站在地面上。不是模拟屏里的红色，而是真正的、漫天的大雪。风像刀子一样割在脸上，但那是自由的痛感。<br><br>他喘着气，紧紧抓着你的手，指着头顶那片在核冬后依然顽强且璀璨的星空。<br>“看啊，”他在大笑，眼泪冻成了最美的钻石，“世界...原来是白色的。”<br><br>在那片耀眼的猎户座之下，你们大步向前，不需要回头。<br>从今夜起，他和你的名字，都叫做自由。`;
+        }
+        else if(bd >= 90 && tr < 100) {
+             t="NORMAL END: 隔着铁丝网的吻";
+             x=`六周结束。他合格了，也和你建立了并不寻常的感情。<br><br>但临走时，他犹豫了一下，还是穿上了那身崭新的军装。“我会回来看你的。”他说这句话时刻意避开了你的眼睛。<br><br>你知道这是谎言。系统的洪流会冲刷掉这六周的记忆，把他雕刻成完美的零件。<br>你拿到了一笔丰厚的遣散费，足以让你在这个冬天不用生火。<br>只是每当看到那些穿军装的孩子，你都会停下很久。`;
+        }
+        else if (bd >= 100) {
+            t = "SAD END: 隔着防弹玻璃的告别";
+            x = "并不是所有的爱都能战胜高墙。你们的心如此贴近，却缺少了最后一把钥匙。<br><br>在那个灰色的清晨，特工们给他戴上了面罩。通过了六周的测试，他通过了，他要去往权力的顶端，成为那个人的影子。<br><br>被推上车前，他突然停下，回过头对你做了一个只要你能看懂的手势——那是在无数个夜晚你们约定好的暗号：<br>“我爱你，再见。”<br><br>你保住了性命，但永远失去了灵魂的一角。";
+        }
+        else if(tr >= 150) { // MONSTER
+             t = "DARK END: 人造的神明";
+             x = `多么完美的怪物。多么伟大的作品。<br><br>在最后一周，他的眼神彻底变了。那种属于人类的怯懦、依赖、甚至恐惧，统统在那双冰蓝色的眼瞳里消失殆尽，只剩下如同深渊般平静的神性。<br>那个哭着要你抱的孩子死去了，取而代之的是一个行走的神明。<br><br>离开时，他经过你身边，就像经过一团空气。你试图叫他的名字，但他连睫毛都没有颤动。<br>在他的世界里，你不再是“监护人”，只是一个完成了使命的工具，是一块正好被踩过的路面。<br>世界将因为他而燃烧。而在那场大火中，你是他扔下的第一根火柴。`;
+        }
+        else { // BAD
+             t = "BAD END: 废品处理";
+             x = `“太可惜了。还是太脆弱。”<br><br>最终评估报告上盖着刺眼的“不合格”。<br>真理部判定这种程度的创伤不足以让他觉醒独裁者基因。<br><br>他并没有被销毁，而是被发配到了辐射严重的7号矿区填补劳动力。<br>那里的人平均寿命只有三年。你试图抗议，但声音像石沉大海。<br>在这个庞大的机器面前，你们原本就只是微不足道的尘埃。`;
+        }
+        this.showEnd(t, x);
+    },
+
+    showEnd: function(t, x) {
+        document.getElementById('m-popup').classList.remove('show');
+        document.getElementById('p-game').style.display = 'none';
+        let ep = document.getElementById('p-end');
+        ep.classList.add('visible');
+        document.getElementById('end-title').innerText = t;
+        document.getElementById('end-txt').innerHTML = x.replace(/{B}/g, this.d.nameBoy);;
+    }
+};
+
+</script>
+</body>
+</html>
